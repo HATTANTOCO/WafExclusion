@@ -9,15 +9,9 @@
  * @license    MIT License
  * @link       https://github.com/hattantoco
  */
-(function($, window, undefined) {
+(function(window, undefined) {
     'use strict';
 
-    /**
-     * WafFrontManager コンストラクタ
-     *
-     * @param {Object} options 設定オプション
-     * @constructor
-     */
     var WafFrontManager = function(options) {
         this.initialize(options);
     };
@@ -27,14 +21,6 @@
             apiUrl: ''
         },
 
-        /**
-         * 初期化処理
-         * 
-         * 現在のURLパスからプレフィックスを自動抽出し、
-         * 適切な通信先URLを設定した上で各種イベントと起動処理を開始します。
-         *
-         * @param {Object} options 設定オプション
-         */
         initialize: function(options) {
             var pathParts = window.location.pathname.split('/');
             var currentPrefix = (pathParts && pathParts[1]) ? pathParts[1] : 'admin';
@@ -46,82 +32,113 @@
         },
 
         /**
-         * 軽量な設定確認（ダミー）通信の実行
-         * 
-         * ログイン画面が表示されている場合は、未ログイン状態であるため
-         * 自動復活処理への遷移をスキップして終了します。
+         * fetchを用いた設定確認通信
          */
         fetchInterval: function() {
             var self = this;
-            $.ajax({
-                url: self.settings.apiUrl,
-                type: 'POST',
-                data: { 'waf_get_interval': 1 },
-                dataType: 'json',
-                success: function(res) {
-                    console.log('[WafExclusion Debug] Interval Fetch SUCCESS:', res);
-                    
-                    if (res && res.status === 'missing') {
-                        var currentPath = window.location.pathname;
-                        if (currentPath.indexOf('/users/login') !== -1 || currentPath.indexOf('login') !== -1) {
-                            console.log('[WafExclusion Debug] Login page detected. Beacon request skipped.');
-                            return;
-                        }
-                        
-                        self.sendBeacon();
+            
+            var formData = new FormData();
+            formData.append('waf_get_interval', '1');
+
+            fetch(self.settings.apiUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: formData
+            })
+            .then(function(response) {
+                // サーバーから 200 OK 以外のエラー（403など）が返って場合
+                // JSONの解析をスキップして終了
+                if (!response.ok) {
+                    console.log('[WafExclusion Debug] Access denied or session expired (Status:', response.status, '). Stopping execution.');
+                    return null; 
+                }
+                return response.json(); 
+            })
+            .then(function(res) {
+                // 403で終了した（resがnull）場合
+                if (!res) return;
+
+                console.log('[WafExclusion Debug] Interval Fetch SUCCESS:', res);
+                
+                if (res && res.status === 'missing') {
+                    var currentPath = window.location.pathname;
+                    if (currentPath.indexOf('/users/login') !== -1 || currentPath.indexOf('login') !== -1) {
+                        console.log('[WafExclusion Debug] Login page detected. Beacon request skipped.');
                         return;
                     }
+                    
+                    self.sendBeacon();
                 }
+            })
+            .catch(function(error) {
+                // 通信エラー（ネットワーク切断など）の場合
+                console.error('[WafExclusion Debug] Interval Fetch ERROR:', error);
             });
         },
 
         /**
-         * WAF除外IPアドレスの再登録・リカバリー通信の実行
+         * fetchを用いた再登録・リカバリー通信
          */
         sendBeacon: function() {
             var self = this;
-            $.ajax({
-                url: self.settings.apiUrl,
-                type: 'POST',
-                data: { 'waf_action_beacon': 1 },
-                dataType: 'json',
-                success: function(res) {
-                    console.log('[WafExclusion Debug] Beacon Registration SUCCESS:', res);
-                }
+            
+            var formData = new FormData();
+            formData.append('waf_action_beacon', '1');
+
+            fetch(self.settings.apiUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: formData
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(res) {
+                console.log('[WafExclusion Debug] Beacon Registration SUCCESS:', res);
+            })
+            .catch(function(error) {
+                console.error('[WafExclusion Debug] Beacon Registration ERROR:', error);
             });
         },
 
         /**
          * イベントハンドラの設定
-         * 
-         * ログアウトボタンが押された瞬間、現在のURLからプレフィックスを動的に抽出して
-         * 同期Ajax通信（async: false）により、.htaccessの登録IPを安全に全消去します。
          */
         bindEvents: function() {
             var self = this;
             
-            $(document).on('click', 'a[href*="logout"], a[href*="Logout"]', function(e) {
-                var logoutUrl = $(this).attr('href');
-                e.preventDefault();
-
-                var pathParts = window.location.pathname.split('/');
-                var currentPrefix = (pathParts && pathParts[1]) ? pathParts[1] : 'admin';
-                var resetUrl = '/' + currentPrefix + '/waf_exclusion/waf_exclusion/reset_all';
-
-                $.ajax({
-                    url: resetUrl,
-                    type: 'POST',
-                    data: { 'waf_delete_beacon': 1 },
-                    async: false,
-                    dataType: 'json'
-                });
+            // ログアウトボタンのクリックイベント（イベント委譲）
+            document.addEventListener('click', function(e) {
+                // aタグかつ、hrefに"logout"または"Logout"が含まれるかチェック
+                var target = e.target.closest('a');
+                if (!target) return;
                 
-                window.location.href = logoutUrl;
+                var href = target.getAttribute('href') || '';
+                if (href.indexOf('logout') !== -1 || href.indexOf('Logout') !== -1) {
+                    e.preventDefault();
+
+                    var pathParts = window.location.pathname.split('/');
+                    var currentPrefix = (pathParts && pathParts[1]) ? pathParts[1] : 'admin';
+                    var resetUrl = '/' + currentPrefix + '/waf_exclusion/waf_exclusion/reset_all';
+
+                    var formData = new FormData();
+                    formData.append('waf_delete_beacon', '1');
+
+                    fetch(resetUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        body: formData
+                    })
+                    .then(function() {
+                        window.location.href = href;
+                    })
+                    .catch(function() {
+                        window.location.href = href;
+                    });
+                }
             });
 
             // タブ復帰時の再確認イベント
             if (typeof document.hidden !== "undefined") {
-                $(document).on('visibilitychange', function() {
+                document.addEventListener('visibilitychange', function() {
                     if (!document.hidden) {
                         self.fetchInterval(); 
                     }
@@ -133,7 +150,8 @@
          * 起動スイッチ
          */
         start: function() {
-            if ($('#waf-just-saved').length > 0) {
+            // 要素の存在チェック
+            if (document.getElementById('waf-just-saved') !== null) {
                 this.sendBeacon();
                 return;
             }
@@ -141,8 +159,9 @@
         }
     };
 
-    $(document).ready(function() {
+    // DOMContentLoadedで実行
+    document.addEventListener('DOMContentLoaded', function() {
         window.BcWafFrontManager = new WafFrontManager();
     });
 
-})(jQuery, window);
+})(window);
