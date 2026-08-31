@@ -1,7 +1,11 @@
-1.0.0
+1.1.0
 
 // Release Notes //
 
+
+[2026-08-31]  WafExclusion-1.1.0
+- 無効化（アンインストール）時の割り込み処理コードをVanilla JS化
+- waf_front_manager.js コードをVanilla JS化
 
 [2026-08-23]  WafExclusion-1.0.0
 - 初版リリース
