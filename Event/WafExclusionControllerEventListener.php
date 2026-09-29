@@ -34,24 +34,15 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
 
     /**
      * フレームワークへイベントを登録
-     * 
-     * 管理画面システム（/admin/）へのアクセス時のみイベントを動的に登録します。
-     * フロント画面アクセス時は空の配列を返すことで、プラグインのフック自体を100%完全に無効化します。
      *
      * @return array
      */
     public function implementedEvents() {
-        // 現在のリクエストが管理画面（/admin/）である場合のみ、イベントを有効化する
-        if (BcUtil::isAdminSystem()) {
             return array(
                 'Controller.startup'  => 'onStartup',
                 'View.beforeRender'   => 'onBeforeRender',
                 'Controller.shutdown' => 'shutdown',
             );
-        }
-
-        // フロント画面アクセス時は空の配列を返し、システムから完全に気配を消す（完全無干渉）
-        return array();
     }
 
     /**
@@ -64,6 +55,11 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
      */
     public function shutdown(CakeEvent $event) {
         $controller = $event->subject();
+
+        // ウィジェット内部通信（requestAction）の時は、最速で終了
+        if (!empty($controller->request->params['requested'])) {
+            return;
+        }
 
         // 1. レスポンスが空の場合は何も処理しない
         $responseBody = $controller->response->body();
@@ -109,7 +105,7 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
             $jsBlock .= "            deleteBtn.addEventListener('click', function(e) {\n";
             $jsBlock .= "                var currentElement = this;\n";
             $jsBlock .= "                \n";
-            $jsBlock .= "                // 💡 既に先行処理が通過したマーク（二重実行防止）があればスルー\n";
+            $jsBlock .= "                // 既に先行処理が通過したマーク（二重実行防止）があればスルー\n";
             $jsBlock .= "                if (currentElement.dataset.wafResetPassed) return;\n";
             $jsBlock .= "                \n";
             $jsBlock .= "                // 後続のイベント（コアのアラートなど）を一旦ストップさせる\n";
@@ -123,7 +119,7 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
             $jsBlock .= "                    var formData = new FormData();\n";
             $jsBlock .= "                    formData.append('waf_delete_beacon', '1');\n";
             $jsBlock .= "                    \n";
-            $jsBlock .= "                    // 💡 async:false の代わりに、安全な非同期 fetch を実行\n";
+            $jsBlock .= "                    // async:false の代わりに、安全な非同期 fetch を実行\n";
             $jsBlock .= "                    fetch('" . $resetUrl . "', {\n";
             $jsBlock .= "                        method: 'POST',\n";
             $jsBlock .= "                        credentials: 'same-origin', // ログインセッションを維持\n";
@@ -140,7 +136,7 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
             $jsBlock .= "                        currentElement.click();\n";
             $jsBlock .= "                    });\n";
             $jsBlock .= "                }\n";
-            $jsBlock .= "            }, true); // 💡 これで $._data を使わずに最優先実行されます\n";
+            $jsBlock .= "            }, true); // これで $._data を使わずに最優先実行されます\n";
             $jsBlock .= "        }\n";
             $jsBlock .= "    }\n";
             $jsBlock .= "});\n";
