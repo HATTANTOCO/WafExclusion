@@ -34,15 +34,24 @@ class WafExclusionControllerEventListener extends BcControllerEventListener {
 
     /**
      * フレームワークへイベントを登録
+     * 
+     * 管理画面システム（/admin/）へのアクセス時のみイベントを動的に登録します。
+     * フロント画面アクセス時は空の配列を返すことで、プラグインのフック自体を100%完全に無効化します。
      *
      * @return array
      */
     public function implementedEvents() {
-        return array(
-            'Controller.startup' => 'onStartup',
-            'View.beforeRender'  => 'onBeforeRender',
-            'Controller.shutdown' => 'shutdown',
-        );
+        // 現在のリクエストが管理画面（/admin/）である場合のみ、イベントを有効化する
+        if (BcUtil::isAdminSystem()) {
+            return array(
+                'Controller.startup'  => 'onStartup',
+                'View.beforeRender'   => 'onBeforeRender',
+                'Controller.shutdown' => 'shutdown',
+            );
+        }
+
+        // フロント画面アクセス時は空の配列を返し、システムから完全に気配を消す（完全無干渉）
+        return array();
     }
 
     /**
