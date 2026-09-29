@@ -1,7 +1,10 @@
-1.1.1
+1.1.2
 
 // Release Notes //
 
+
+[2026-09-29]  WafExclusion-1.1.2
+- requestAction時のWarning修正による自己リカバリー（Ajax）のデグレードを解消
 
 [2026-09-29]  WafExclusion-1.1.1
 - フロント画面におけるrequestAction時の意図しないフックとWarningを修正
