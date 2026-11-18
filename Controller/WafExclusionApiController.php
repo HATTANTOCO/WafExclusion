@@ -29,21 +29,20 @@ class WafExclusionApiController extends AppController {
     private $settingPath = APP . 'Plugin' . DS . 'WafExclusion' . DS . 'Config' . DS . 'setting.php';
 
     /**
-     * .htaccess ファイルの物理パス
+     * 対象 .htaccess ファイルの物理パス
      *
      * @var string
      */
-    private $htaccessPath = WWW_ROOT . '.htaccess';
+    private $htaccessPath;
 
     /**
      * 認証ガード
-     * 
-     * 管理画面用プレフィックスの有無およびAjaxリクエストの安全性を確認します。
      *
      * @return void
      */
     public function beforeFilter() {
         parent::beforeFilter();
+        $this->htaccessPath = $this->WafExclusion->getTargetHtaccessPath();
         if (isset($this->RequestHandler) && !$this->RequestHandler->isAjax() && !isset($this->request->params['prefix'])) {
             $this->redirect('/');
         }
@@ -51,15 +50,13 @@ class WafExclusionApiController extends AppController {
 
     /**
      * フロントからの非同期通信（Ajax）を受け止めるエンドポイントアクション
-     * 
-     * 軽量ダミー確認（状態チェック）および本番の登録・自動復活ビーコンを処理します。
      *
      * @return void
      */
     public function admin_beacon() {
         App::uses('BcUtil', 'Utility');
         $loginUser = BcUtil::loginUser('admin');
-        
+
         // 未ログイン時のアクセス遮断
         if (!$loginUser) {
             $this->autoRender = false;
@@ -68,16 +65,13 @@ class WafExclusionApiController extends AppController {
             exit();
         }
 
-        // 許可されたグループIDの検証
-        $targetGroupIds = array(1);
-        if (file_exists($this->settingPath)) {
-            include $this->settingPath;
-            if (isset($config['WafExclusion']['target_group_ids'])) {
-                $targetGroupIds = array_map('intval', (array)$config['WafExclusion']['target_group_ids']);
-            }
+        // 設定読み込みと許可グループIDの検証
+        $currentSetting = $this->WafExclusion->loadSetting($this->settingPath);
+        $targetGroupIds = array_map('intval', (array)$currentSetting['target_group_ids']);
+        if (!in_array(1, $targetGroupIds, true)) {
+            $targetGroupIds[] = 1;
         }
 
-        // 対象グループ外のアクセス遮断
         if (!in_array((int)$loginUser['user_group_id'], $targetGroupIds, true)) {
             $this->autoRender = false;
             $this->response->statusCode(403);
@@ -85,26 +79,27 @@ class WafExclusionApiController extends AppController {
             exit();
         }
 
+        $wafType = $currentSetting['waf_type'];
+        $forceWaf = $currentSetting['force_waf'];
         $status = 'idle';
 
         if (!empty($this->request->data['waf_action_beacon'])) {
-            $ip = env('REMOTE_ADDR');
-            if ($ip) {
-                if (method_exists($this, 'runGarbageCollection')) {
-                    $this->runGarbageCollection($ip);
-                }
-                $this->updateWafTimestamp($ip);
+            $ip = (string)env('REMOTE_ADDR');
+            if ($ip !== '') {
+                $updated = $this->WafExclusion->updateWafTimestamp(
+                    $this->htaccessPath,
+                    $ip,
+                    $wafType,
+                    $forceWaf
+                );
+                $status = $updated ? 'registered' : 'skipped';
             }
-            $status = 'registered';
         } elseif (!empty($this->request->data['waf_get_interval'])) {
-            $clientIp = env('REMOTE_ADDR');
+            $clientIp = (string)env('REMOTE_ADDR');
             $status = 'missing';
 
-            if (file_exists($this->htaccessPath)) {
-                $content = file_get_contents($this->htaccessPath);
-                if (strpos($content, "SiteGuard_User_ExcludeSig ip({$clientIp})") !== false) {
-                    $status = 'verified';
-                }
+            if ($clientIp !== '' && $this->WafExclusion->isIpRegistered($this->htaccessPath, $clientIp, $wafType)) {
+                $status = 'verified';
             }
         }
 
@@ -116,68 +111,5 @@ class WafExclusionApiController extends AppController {
         )));
         $this->response->send();
         exit();
-    }
-
-    /**
-     * .htaccessに書き込むWAF除外ディレクティブブロックを生成
-     *
-     * @param string $ip 対象 of IPアドレス
-     * @return string 生成されたディレクティブ文字列
-     */
-    private function generateWafDirective($ip) {
-        return "# --- WAF_EXCLUSION_START ---\n<IfModule mod_siteguard.c>\n  SiteGuard_User_ExcludeSig ip({$ip})\n</IfModule>\n# --- WAF_EXCLUSION_END ---\n";
-    }
-
-    /**
-     * 指定されたIPアドレスのブロックを.htaccessへ書き込み・更新
-     *
-     * @param string $ip 対象 of IPアドレス
-     * @return void
-     */
-    private function updateWafTimestamp($ip) {
-        if (file_exists($this->htaccessPath) && is_writable($this->htaccessPath)) {
-            $content = file_get_contents($this->htaccessPath);
-            
-            $pattern = '/\R*# --- WAF_EXCLUSION_START ---\s*<IfModule mod_siteguard\.c>\s*SiteGuard_User_ExcludeSig ip\(' . preg_quote($ip, '/') . '\)\s*<\/IfModule>\s*# --- WAF_EXCLUSION_END ---\R*/s';
-            $content = preg_replace($pattern, "\n", $content);
-
-            $directive = $this->generateWafDirective($ip);
-            
-            $marker = '# [WAF_EXCLUSION_MARKER]';
-            if (strpos($content, $marker) !== false) {
-                $content = str_replace($marker, $marker . "\n\n" . $directive, $content);
-            } else {
-                $content = $directive . $content;
-            }
-            
-            // 改行クレンジング
-            $content = preg_replace('/(?:\r\n|\r|\n){3,}/', "\n\n", $content);
-
-            file_put_contents($this->htaccessPath, $content, LOCK_EX);
-            clearstatcache(true, $this->htaccessPath);
-        }
-    }
-
-    /**
-     * 一括全消去型ガベージコレクション
-     * 
-     * .htaccess 内に登録されている自動登録ブロックを一括でパージします。
-     *
-     * @return void
-     */
-    private function runGarbageCollection($ip) {
-        if (!file_exists($this->htaccessPath) || !is_writable($this->htaccessPath)) {
-            return;
-        }
-
-        $content = file_get_contents($this->htaccessPath);
-        
-        $pattern = '/\s*# --- WAF_EXCLUSION_START ---\s*<IfModule mod_siteguard\.c>\s*SiteGuard_User_ExcludeSig ip\(' . preg_quote($ip, '/') . '\)\s*<\/IfModule>\s*# --- WAF_EXCLUSION_END ---\s*/s';
-        $content = preg_replace($pattern, '', $content);
-
-        $content = preg_replace('/(?:\r\n|\r|\n){3,}/', "\n\n", $content);
-
-        file_put_contents($this->htaccessPath, $content, LOCK_EX);
-        clearstatcache(true, $this->htaccessPath);
     }
 }

@@ -1,7 +1,16 @@
-1.1.2
+1.2.0
 
 // Release Notes //
 
+
+[2026-11-17]  WafExclusion-1.2.0
+- SiteGuard Lite に加え ModSecurity（Apache 2.4.26以上 + mod_security2）の除外ディレクティブ出力に対応
+- ModSecurity 選択時の環境自動診断（Apacheバージョン・モジュール検出）および「強制有効」動作モードを追加
+- WAF種別の切り替え保存時に、旧WAF形式の除外設定を自動パージして安全に切り替える機能を追加
+- 配布パッケージ（ルート直下）とGitHubリポジトリDL（app/webroot構成）の両方で対象.htaccessパスを自動判定するよう改善
+- 管理画面に現在の接続元IP、書き込み対象ファイル、書き込み権限、WAF動作可否の診断ステータス表示を追加
+- 設定保存・一括クリア後のビーコン再登録完了時に画面を自動リフレッシュし、最新の.htaccessプレビューを即時反映
+- README.md に対象.htaccessの仕様、ModSecurity利用時の注意点、マーカー配置の案内を追記
 
 [2026-09-29]  WafExclusion-1.1.2
 - requestAction時のWarning修正による自己リカバリー（Ajax）のデグレードを解消

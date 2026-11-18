@@ -79,20 +79,30 @@
         /**
          * fetchを用いた再登録・リカバリー通信
          */
-        sendBeacon: function() {
+        sendBeacon: function(reloadAfter) {
             var self = this;
-            
             var formData = new FormData();
             formData.append('waf_action_beacon', '1');
 
             fetch(self.settings.apiUrl, {
                 method: 'POST',
                 credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: formData
             })
-            .then(function(response) { return response.json(); })
+            .then(function(response) {
+                if (!response.ok) return null;
+                return response.json();
+            })
             .then(function(res) {
-                console.log('[WafExclusion Debug] Beacon Registration SUCCESS:', res);
+                if (res) {
+                    console.log('[WafExclusion Debug] Beacon Registration SUCCESS:', res);
+                    if (reloadAfter) {
+                        window.location.reload();
+                    }
+                }
             })
             .catch(function(error) {
                 console.error('[WafExclusion Debug] Beacon Registration ERROR:', error);
@@ -150,9 +160,8 @@
          * 起動スイッチ
          */
         start: function() {
-            // 要素の存在チェック
             if (document.getElementById('waf-just-saved') !== null) {
-                this.sendBeacon();
+                this.sendBeacon(true);
                 return;
             }
             this.fetchInterval();
