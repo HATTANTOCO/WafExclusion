@@ -1,7 +1,10 @@
-1.2.0
+1.2.1
 
 // Release Notes //
 
+
+[2026-11-18]  WafExclusion-1.2.1
+- Config/setting.php の初期設定値をデフォルト（siteguard / 管理者のみ）に修正
 
 [2026-11-17]  WafExclusion-1.2.0
 - SiteGuard Lite に加え ModSecurity（Apache 2.4.26以上 + mod_security2）の除外ディレクティブ出力に対応
