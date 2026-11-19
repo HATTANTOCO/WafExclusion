@@ -133,6 +133,20 @@ class WafExclusion extends AppModel {
             }
         }
 
+        // パーミッションの安全性チェック（Unix系OSのみ判定：その他ユーザーに書き込み権限 0002 がある場合は危険）
+        $htaccessPerms = '';
+        $isPermsUnsafe = false;
+        if (file_exists($htaccessPath) && DIRECTORY_SEPARATOR === '/') {
+            clearstatcache(true, $htaccessPath);
+            $perms = @fileperms($htaccessPath);
+            if ($perms !== false) {
+                $htaccessPerms = substr(sprintf('%o', $perms), -3);
+                if (($perms & 0x0002) !== 0) {
+                    $isPermsUnsafe = true;
+                }
+            }
+        }
+
         return array(
             'htaccessPath' => $htaccessPath,
             'isHtaccessWritable' => $isHtaccessWritable,
@@ -140,6 +154,8 @@ class WafExclusion extends AppModel {
             'isApacheOk' => $isApacheOk,
             'hasModSecurity' => $hasModSecurity,
             'isWafUpdatable' => $isWafUpdatable,
+            'htaccessPerms' => $htaccessPerms,
+            'isPermsUnsafe' => $isPermsUnsafe,
         );
     }
 

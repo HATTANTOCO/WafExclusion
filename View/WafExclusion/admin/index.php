@@ -63,7 +63,15 @@ $targetLabel = $isInWebroot
         <li>
             <strong>書き込み対象ファイル:</strong> <code><?php echo h($targetLabel); ?></code>
             <?php if (!empty($diagnostics['isHtaccessWritable'])): ?>
-                <span style="color: #28a745; font-weight: bold;">（書き込み可能）</span>
+                <?php if (!empty($diagnostics['isPermsUnsafe'])): ?>
+                    <span style="color: #dc3545; font-weight: bold;">
+                        （警告：危険なパーミッション <?php echo h($diagnostics['htaccessPerms']); ?> です。安全のため 604 や 644 などに変更してください）
+                    </span>
+                <?php else: ?>
+                    <span style="color: #28a745; font-weight: bold;">
+                        （書き込み可能<?php echo !empty($diagnostics['htaccessPerms']) ? ' / パーミッション: ' . h($diagnostics['htaccessPerms']) : ''; ?>）
+                    </span>
+                <?php endif; ?>
             <?php else: ?>
                 <span style="color: #dc3545; font-weight: bold;">（書き込み不可・パーミッションを確認してください）</span>
             <?php endif; ?>
